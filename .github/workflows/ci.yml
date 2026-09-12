@@ -3,6 +3,9 @@ on:
     push:
         branches:
             - main
+    pull_request:
+        branches:
+            - main
     workflow_dispatch:
 jobs:
     unit-test-backend:
@@ -37,8 +40,10 @@ jobs:
 
     
     unit-test-frontend:
-        needs: unit-test-backend
+    
         runs-on: ubuntu-latest
+        outputs:
+            coverage: ${{ steps.test-frontend.outputs.coverage }}
         steps:
             -   name: Checkout repository
                 uses: actions/checkout@v4
@@ -52,6 +57,7 @@ jobs:
 
             
             - name: Execute unit tests for frontend
+              id: test-frontend
               working-directory: ./bugtracker-frontend
               run: |
                npm ci
@@ -62,6 +68,10 @@ jobs:
                cat full_output.txt >>$GITHUB_STEP_SUMMARY
                echo "'''">>$GITHUB_STEP_SUMMARY
 
+               echo "report<<EOF">>$GITHUB_OUTPUT
+               cat full_output.txt >>$GITHUB_OUTPUT
+               echo "EOF">>$GITHUB_OUTPUT
+
             
             - name: Upload test results
               uses: dorny/test-reporter@v1
@@ -70,5 +80,25 @@ jobs:
                   name: Frontend Unit Tests report
                   path: ./bugtracker-frontend/test-results.xml
                   reporter: jest-junit
+
+    create-coverage-comment:
+        if: github.event_name == 'pull-request'
+        needs: unit-test-frontend
+        runs-on: ubuntu-latest
+        permissions:
+            pull-requests: write
+        steps:
+            
+            - name: Create coverage comment
+              uses: peter-evans/create-or-update-comment@v4
+              with:
+                issue-number: ${{ github.event.pull_request.number }}
+                body: |
+                    ## Unit Test Coverage Summary
+                    '''
+                    ${{ steps.unit-test-frontend.outputs.coverage }}
+
+                    '''
+              
 
     
